@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Draw Probability Calculator</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Global header: brand back-link, app title/status, and mode switching. -->
+    <header class="topbar">
+      <div>
+        <div class="brand-kicker">A tool from <a id="brandInlineLink" href="https://example.com">Your Site</a></div>
+        <h1>Draw Probability Calculator</h1>
+        <div class="status-line" id="globalStatus">Ready</div>
+      </div>
+      <div class="topbar-actions">
+        <a class="site-link" id="brandTopLink" href="https://example.com">Visit main site</a>
+        <div class="mode-tabs" role="tablist" aria-label="Calculator mode">
+          <button class="tab-button active" id="basicTab" type="button" role="tab" aria-selected="true">Basic</button>
+          <button class="tab-button" id="comboTab" type="button" role="tab" aria-selected="false">Combo</button>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- Basic mode: interchangeable success cards, equivalent to a spreadsheet hit calculator. -->
+      <section class="mode-panel active" id="basicPanel" aria-labelledby="basicTab">
+        <div class="workspace-grid">
+          <form class="control-panel" id="basicForm">
+            <div class="panel-header">
+              <h2>Inputs</h2>
+              <button class="ghost-button" id="basicReset" type="button">Reset</button>
+            </div>
+
+            <div class="field-grid">
+              <label>
+                <span>Deck size</span>
+                <input id="deckSize" type="number" min="1" step="1" value="60">
+              </label>
+              <label>
+                <span>Successes in deck</span>
+                <input id="successes" type="number" min="0" step="1" value="12">
+              </label>
+              <label>
+                <span>Initial hand</span>
+                <input id="initialHand" type="number" min="0" step="1" value="7">
+              </label>
+              <label>
+                <span>Cards replaced</span>
+                <input id="replacedCards" type="number" min="0" step="1" value="2">
+              </label>
+              <label>
+                <span>Additional draws</span>
+                <input id="additionalDraws" type="number" min="0" step="1" value="1">
+              </label>
+              <label>
+                <span>Target successes</span>
+                <input id="targetSuccesses" type="number" min="0" step="1" value="2">
+              </label>
+              <label>
+                <span>Cards chosen to replace</span>
+                <select id="replacePolicy">
+                  <option value="misses">Non-successes first</option>
+                  <option value="random">Random cards in hand</option>
+                </select>
+              </label>
+              <label>
+                <span>Replaced cards shuffled in</span>
+                <select id="shuffleTiming">
+                  <option value="pre">Before drawing replacements</option>
+                  <option value="post">After drawing replacements</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="chart-controls">
+              <label>
+                <span>Sweep variable</span>
+                <select id="basicSweep">
+                  <option value="additionalDraws">Additional draws</option>
+                  <option value="initialHand">Initial hand</option>
+                  <option value="replacedCards">Cards replaced</option>
+                  <option value="successes">Copies in deck</option>
+                </select>
+              </label>
+            </div>
+          </form>
+
+          <section class="result-panel">
+            <div class="metric-row">
+              <div class="metric primary">
+                <span class="metric-label">At least target</span>
+                <strong id="basicProbability">--</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Expected successes</span>
+                <strong id="basicExpected">--</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">No successes</span>
+                <strong id="basicZero">--</strong>
+              </div>
+            </div>
+
+            <div class="viz-grid">
+              <div class="viz-panel">
+                <div class="panel-header">
+                  <h2>Distribution</h2>
+                </div>
+                <div id="basicDistribution" class="bar-chart"></div>
+              </div>
+              <div class="viz-panel">
+                <div class="panel-header">
+                  <h2>Sweep</h2>
+                </div>
+                <svg id="basicSweepChart" class="line-chart" viewBox="0 0 640 300" role="img" aria-label="Probability sweep"></svg>
+              </div>
+            </div>
+
+            <div class="table-panel">
+              <div class="panel-header">
+                <h2>Details</h2>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Successes</th>
+                    <th>Probability</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="basicTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+
+      <!-- Combo mode: deck rows are assigned roles, then evaluated against target rows. -->
+      <section class="mode-panel" id="comboPanel" aria-labelledby="comboTab">
+        <div class="workspace-grid combo-layout">
+          <form class="control-panel" id="comboForm">
+            <div class="panel-header">
+              <h2>Deck</h2>
+              <div class="button-row">
+                <button class="ghost-button" id="comboExample" type="button">Example</button>
+                <button class="ghost-button" id="addCardRow" type="button">Add row</button>
+              </div>
+            </div>
+
+            <div class="deck-table-wrap">
+              <table class="deck-table">
+                <thead>
+                  <tr>
+                    <th>Qty</th>
+                    <th>Card</th>
+                    <th>Role(s)</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="deckRows"></tbody>
+              </table>
+            </div>
+
+            <div class="panel-header secondary-header">
+              <h2>Targets</h2>
+              <div class="button-row">
+                <button class="ghost-button" id="addRequirementRow" type="button">Add requirement</button>
+                <button class="ghost-button" id="addAlternativeLine" type="button">Add alternative</button>
+              </div>
+            </div>
+
+            <div class="target-table-wrap">
+              <table class="target-table">
+                <thead>
+                  <tr>
+                    <th>Line</th>
+                    <th>Need at least</th>
+                    <th>Role(s)</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="targetRows"></tbody>
+              </table>
+            </div>
+            <datalist id="roleOptions"></datalist>
+
+            <div class="field-grid">
+              <label>
+                <span>Wildcard role</span>
+                <input id="wildcardTag" type="text" value="wild">
+              </label>
+              <label>
+                <span>Initial hand</span>
+                <input id="comboInitialHand" type="number" min="0" step="1" value="7">
+              </label>
+              <label>
+                <span>Cards replaced</span>
+                <input id="comboReplacedCards" type="number" min="0" step="1" value="2">
+              </label>
+              <label>
+                <span>Additional draws</span>
+                <input id="comboAdditionalDraws" type="number" min="0" step="1" value="1">
+              </label>
+              <label>
+                <span>Cards chosen to replace</span>
+                <select id="comboReplacePolicy">
+                  <option value="misses">Non-combo cards first</option>
+                  <option value="random">Random cards in hand</option>
+                </select>
+              </label>
+              <label>
+                <span>Replaced cards shuffled in</span>
+                <select id="comboShuffleTiming">
+                  <option value="pre">Before drawing replacements</option>
+                  <option value="post">After drawing replacements</option>
+                </select>
+              </label>
+            </div>
+
+            <details class="advanced-expression">
+              <summary>Generated expression</summary>
+              <input id="comboExpression" type="text" value="A>=1 + B>=1" readonly>
+            </details>
+          </form>
+
+          <section class="result-panel">
+            <div class="metric-row">
+              <div class="metric primary">
+                <span class="metric-label">Combo probability</span>
+                <strong id="comboProbability">--</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Average draw hit</span>
+                <strong id="comboAverageDraw">--</strong>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Deck size</span>
+                <strong id="comboDeckSize">--</strong>
+              </div>
+            </div>
+
+            <div class="viz-grid combo-viz">
+              <div class="viz-panel">
+                <div class="panel-header">
+                  <h2>Cards Drawn</h2>
+                </div>
+                <svg id="comboCdfChart" class="line-chart" viewBox="0 0 640 300" role="img" aria-label="Combo probability by cards drawn"></svg>
+              </div>
+              <div class="viz-panel">
+                <div class="panel-header">
+                  <h2>Target Roles</h2>
+                </div>
+                <div id="tagSummary" class="tag-summary"></div>
+              </div>
+            </div>
+
+            <div class="table-panel">
+              <div class="panel-header">
+                <h2>Target Lines</h2>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Line</th>
+                  <th>Needs</th>
+                </tr>
+              </thead>
+                <tbody id="expressionTable"></tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <!-- Lightweight marketing block so standalone deployments point back to the main site. -->
+    <footer class="marketing-footer">
+      <div>
+        <div class="brand-kicker">Built by <a id="brandFooterLink" href="https://example.com">Your Site</a></div>
+        <h2 id="marketingHeadline">More card math, strategy notes, and tools</h2>
+        <p id="marketingCopy">Use this calculator for the numbers, then visit the main site for examples, writeups, and related resources.</p>
+      </div>
+      <a class="footer-cta" id="brandFooterCta" href="https://example.com">Visit main site</a>
+    </footer>
+  </div>
+
+  <!-- Template cloned by app.js whenever the user adds a combo deck row. -->
+  <template id="deckRowTemplate">
+    <tr>
+      <td><input class="qty-input" type="number" min="0" step="1" value="4" aria-label="Quantity"></td>
+      <td><input class="name-input" type="text" value="Card" aria-label="Card name"></td>
+      <td><input class="tags-input" type="text" value="A" aria-label="Roles"></td>
+      <td><button class="icon-button remove-row" type="button" title="Remove row" aria-label="Remove row">x</button></td>
+    </tr>
+  </template>
+
+  <!-- Template cloned by app.js whenever the user adds a combo target row. -->
+  <template id="targetRowTemplate">
+    <tr>
+      <td><input class="line-input" type="number" min="1" step="1" value="1" aria-label="Line number"></td>
+      <td><input class="need-input" type="number" min="1" step="1" value="1" aria-label="Needed count"></td>
+      <td><input class="roles-input" type="text" list="roleOptions" value="A" aria-label="Required roles"></td>
+      <td><button class="icon-button remove-target-row" type="button" title="Remove target row" aria-label="Remove target row">x</button></td>
+    </tr>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>
