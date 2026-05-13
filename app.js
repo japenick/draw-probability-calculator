@@ -1184,8 +1184,8 @@
     $("comboExpression").value = buildExpressionFromTargetRows();
     $("wildcardTag").value = "wild";
     $("comboInitialHand").value = 7;
-    $("comboReplacedCards").value = 2;
-    $("comboAdditionalDraws").value = 1;
+    $("comboReplacedCards").value = 0;
+    $("comboAdditionalDraws").value = 0;
     $("comboReplacePolicy").value = "misses";
     $("comboShuffleTiming").value = "pre";
     renderCombo();
