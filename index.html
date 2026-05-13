@@ -11,12 +11,11 @@
     <!-- Global header: brand back-link, app title/status, and mode switching. -->
     <header class="topbar">
       <div>
-        <div class="brand-kicker">A tool from <a id="brandInlineLink" href="https://example.com">Your Site</a></div>
         <h1>Draw Probability Calculator</h1>
-        <div class="status-line" id="globalStatus">Ready</div>
+        <div class="status-line" id="globalStatus" aria-live="polite"></div>
       </div>
       <div class="topbar-actions">
-        <a class="site-link" id="brandTopLink" href="https://example.com">Visit main site</a>
+        <a class="site-link" id="brandTopLink" href="https://example.com">johnpenick.com</a>
         <div class="mode-tabs" role="tablist" aria-label="Calculator mode">
           <button class="tab-button active" id="basicTab" type="button" role="tab" aria-selected="true">Basic</button>
           <button class="tab-button" id="comboTab" type="button" role="tab" aria-selected="false">Combo</button>
@@ -41,7 +40,7 @@
               </label>
               <label>
                 <span>Successes in deck</span>
-                <input id="successes" type="number" min="0" step="1" value="12">
+                <input id="successes" type="number" min="0" step="1" value="4">
               </label>
               <label>
                 <span>Initial hand</span>
@@ -49,15 +48,15 @@
               </label>
               <label>
                 <span>Cards replaced</span>
-                <input id="replacedCards" type="number" min="0" step="1" value="2">
+                <input id="replacedCards" type="number" min="0" step="1" value="0">
               </label>
               <label>
                 <span>Additional draws</span>
-                <input id="additionalDraws" type="number" min="0" step="1" value="1">
+                <input id="additionalDraws" type="number" min="0" step="1" value="0">
               </label>
               <label>
                 <span>Target successes</span>
-                <input id="targetSuccesses" type="number" min="0" step="1" value="2">
+                <input id="targetSuccesses" type="number" min="0" step="1" value="1">
               </label>
               <label>
                 <span>Cards chosen to replace</span>
@@ -279,9 +278,8 @@
     <!-- Lightweight marketing block so standalone deployments point back to the main site. -->
     <footer class="marketing-footer">
       <div>
-        <div class="brand-kicker">Built by <a id="brandFooterLink" href="https://example.com">Your Site</a></div>
         <h2 id="marketingHeadline">More card math, strategy notes, and tools</h2>
-        <p id="marketingCopy">Use this calculator for the numbers, then visit the main site for examples, writeups, and related resources.</p>
+        <p id="marketingCopy">Find related tools, notes, projects, and resources at johnpenick.com.</p>
       </div>
       <a class="footer-cta" id="brandFooterCta" href="https://example.com">Visit main site</a>
     </footer>

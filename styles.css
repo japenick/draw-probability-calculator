@@ -73,13 +73,6 @@ h2 {
   font-size: 15px;
 }
 
-.brand-kicker {
-  margin-bottom: 3px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 650;
-}
-
 a {
   color: var(--accent-strong);
   text-decoration-thickness: 1px;
@@ -91,10 +84,13 @@ a:hover {
 }
 
 .status-line {
-  min-height: 21px;
   margin-top: 4px;
   color: var(--muted);
   font-size: 14px;
+}
+
+.status-line:empty {
+  display: none;
 }
 
 .topbar-actions {

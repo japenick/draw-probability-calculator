@@ -7,6 +7,19 @@
    * This file intentionally uses plain browser JavaScript so the app can run
    * from GitHub Pages or any other static host with no build step. The math is
    * exact combinatorics, not simulation.
+   *
+   * High-level flow:
+   * 1. Read form inputs from the DOM.
+   * 2. Convert user-friendly fields into a compact probability model.
+   * 3. Enumerate every possible draw outcome and weight each by its exact
+   *    hypergeometric probability.
+   * 4. Render summary metrics, charts, and detail tables back into the DOM.
+   *
+   * Terminology:
+   * - Basic mode: a card is either a success or a non-success.
+   * - Combo mode: cards can have one or more roles, such as A, B, ramp, tutor.
+   * - Target line: a set of requirements that must all be met.
+   * - Alternative line: a separate target line; satisfying any line succeeds.
    */
 
   var $ = function (id) {
@@ -17,18 +30,24 @@
   var MARKETING = {
     siteName: "John Penick",
     siteUrl: "https://www.johnpenick.com",
-    topLinkLabel: "Visit John Penick",
+    topLinkLabel: "johnpenick.com",
     footerHeadline: "More tools, notes, and projects from John Penick",
-    footerCopy: "Use this calculator for the numbers, then visit John Penick for related tools, strategy notes, and resources.",
-    footerCtaLabel: "Visit johnpenick.com"
+    footerCopy: "Find related tools, notes, projects, and resources at johnpenick.com.",
+    footerCtaLabel: "johnpenick.com"
   };
 
   var NS = "http://www.w3.org/2000/svg";
   var logFacts = [0];
   var comboTimer = 0;
 
-  // Cache log-factorials so combinations can be computed quickly and safely for
-  // typical deck sizes without overflowing JavaScript numbers.
+  /*
+   * Probability helpers
+   *
+   * Combinations can get large quickly: C(100, 50) is far beyond what should be
+   * multiplied directly in JavaScript. Storing log-factorials lets the app
+   * compute ratios of combinations without intermediate overflow. The final
+   * probabilities are exponentiated back into normal decimal values.
+   */
   function ensureLogFacts(n) {
     for (var i = logFacts.length; i <= n; i += 1) {
       logFacts[i] = logFacts[i - 1] + Math.log(i);
@@ -44,6 +63,9 @@
   // Hypergeometric probability: drawing exactly `hits` successes when drawing
   // `draws` cards from a deck with `successes` marked cards.
   function hypergeom(total, successes, draws, hits) {
+    // Impossible requests return 0 instead of throwing. This keeps all later
+    // enumeration code simple: every branch can ask for a probability and then
+    // ignore zero-probability outcomes.
     if (total < 0 || successes < 0 || draws < 0 || hits < 0) return 0;
     if (successes > total || draws > total || hits > successes || hits > draws) return 0;
     var misses = total - successes;
@@ -61,6 +83,8 @@
   function formatPct(value) {
     if (!Number.isFinite(value)) return "--";
     var pct = value * 100;
+    // Tiny edge probabilities are easier to read with threshold labels than as
+    // a row of zeros caused by rounding.
     if (pct > 0 && pct < 0.01) return "<0.01%";
     if (pct > 99.99 && pct < 100) return ">99.99%";
     return pct.toFixed(pct < 10 ? 2 : 1) + "%";
@@ -73,20 +97,18 @@
 
   function showStatus(message, isError) {
     var status = $("globalStatus");
-    status.textContent = message;
+    status.textContent = message || "";
     status.style.color = isError ? "#9d3c1b" : "";
   }
 
   function applyMarketingConfig() {
-    var linkIds = ["brandInlineLink", "brandTopLink", "brandFooterLink", "brandFooterCta"];
+    var linkIds = ["brandTopLink", "brandFooterCta"];
     linkIds.forEach(function (id) {
       var link = $(id);
       if (!link) return;
       link.href = MARKETING.siteUrl;
       link.rel = "noopener";
     });
-    $("brandInlineLink").textContent = MARKETING.siteName;
-    $("brandFooterLink").textContent = MARKETING.siteName;
     $("brandTopLink").textContent = MARKETING.topLinkLabel;
     $("brandFooterCta").textContent = MARKETING.footerCtaLabel;
     $("marketingHeadline").textContent = MARKETING.footerHeadline;
@@ -107,6 +129,8 @@
       shuffleTiming: $("shuffleTiming").value
     };
     if (overrides) {
+      // Sweep charts call the same calculator many times while overriding only
+      // one field, such as additionalDraws = 0, 1, 2, ...
       Object.keys(overrides).forEach(function (key) {
         input[key] = overrides[key];
       });
@@ -116,6 +140,8 @@
 
   function validateBasic(input) {
     var errors = [];
+    // These checks protect the probability functions from impossible deck
+    // states, such as drawing more cards than exist after the opening hand.
     if (input.deckSize < 1) errors.push("Deck size must be at least 1.");
     if (input.successes < 0 || input.successes > input.deckSize) errors.push("Successes must be between 0 and deck size.");
     if (input.initialHand < 0 || input.initialHand > input.deckSize) errors.push("Initial hand must fit inside the deck.");
@@ -136,7 +162,10 @@
     if (replaced === 0) return [{ dropSuccesses: 0, probability: 1 }];
     if (policy === "random") {
       var options = [];
+      // If the hand contains too few non-successes to fill the replacement
+      // count, at least some successes must be replaced.
       var minDrop = Math.max(0, replaced - (handSize - initialSuccesses));
+      // At most, the user can replace every success currently in hand.
       var maxDrop = Math.min(initialSuccesses, replaced);
       for (var drop = minDrop; drop <= maxDrop; drop += 1) {
         options.push({
@@ -147,6 +176,8 @@
       return options;
     }
     return [{
+      // "Non-successes first" is deterministic until the number of replaced
+      // cards exceeds the number of non-successes in hand.
       dropSuccesses: Math.max(0, replaced - (handSize - initialSuccesses)),
       probability: 1
     }];
@@ -169,8 +200,12 @@
     var R = input.replacedCards;
     var D = input.additionalDraws;
     var T = input.targetSuccesses;
+    // Map key: final number of successes seen.
+    // Map value: probability of ending with exactly that many successes.
     var distribution = new Map();
 
+    // Bounds skip impossible initial-hand hit counts. Example: with 12
+    // successes in a 60 card deck and a 7 card hand, only 0..7 are possible.
     var minInitial = Math.max(0, H - (N - K));
     var maxInitial = Math.min(K, H);
 
@@ -187,6 +222,8 @@
         // cards are drawn. Post-shuffle replacement waits until after that draw.
         var repTotal = input.shuffleTiming === "pre" ? N - H + R : N - H;
         var repSuccesses = input.shuffleTiming === "pre" ? K - initialHits + dropSucc : K - initialHits;
+        // Replacement draw bounds: draw exactly R replacement cards from the
+        // current replacement pool and enumerate how many of those are successes.
         var minRep = Math.max(0, R - (repTotal - repSuccesses));
         var maxRep = Math.min(repSuccesses, R);
 
@@ -212,6 +249,8 @@
             var pAdd = hypergeom(addTotal, addSuccesses, D, addSucc);
             if (pAdd <= 0) continue;
             var finalHits = keptSucc + repSucc + addSucc;
+            // Independent staged probabilities multiply: opening hand outcome,
+            // replacement choice, replacement draw, and later draw.
             var probability = pInitial * dropOption.probability * pRep * pAdd;
             distribution.set(finalHits, (distribution.get(finalHits) || 0) + probability);
           }
@@ -252,6 +291,8 @@
     var result = calculateBasic(input);
 
     if (result.errors.length) {
+      // Keep stale successful numbers from remaining on screen after an invalid
+      // edit, such as setting cards replaced higher than initial hand size.
       $("basicProbability").textContent = "--";
       $("basicExpected").textContent = "--";
       $("basicZero").textContent = "--";
@@ -268,7 +309,7 @@
     renderBasicDistribution(result.distribution);
     renderBasicTable(result.distribution);
     renderBasicSweep(input);
-    showStatus("Basic calculation updated", false);
+    showStatus("", false);
   }
 
   function renderBasicDistribution(rows) {
@@ -278,6 +319,8 @@
       container.innerHTML = '<div class="empty-state">No distribution</div>';
       return;
     }
+    // Bars are normalized to the largest bucket so small probability buckets
+    // remain visible even when the whole distribution is narrow.
     var max = Math.max.apply(null, rows.map(function (row) { return row.probability; }));
     rows.forEach(function (row) {
       var item = document.createElement("div");
@@ -342,6 +385,8 @@
       for (var k = 0; k <= input.deckSize; k += 1) values.push(k);
     }
     if (values.length > 90) {
+      // Avoid drawing hundreds of SVG points for large decks. The endpoints are
+      // preserved so the chart still shows the full input range.
       var sampled = [];
       for (var i = 0; i < values.length; i += Math.ceil(values.length / 90)) sampled.push(values[i]);
       if (sampled[sampled.length - 1] !== values[values.length - 1]) sampled.push(values[values.length - 1]);
@@ -356,6 +401,9 @@
       var next = {};
       next[variable] = value;
       if (variable === "initialHand" && input.replacedCards > value) {
+        // A sweep can temporarily make the opening hand smaller than the
+        // current replacement count. Clamp replacement count for that point so
+        // the sweep still gives useful nearby values.
         next.replacedCards = value;
       }
       var result = calculateBasic(readBasicInput(next));
@@ -407,6 +455,8 @@
     var yMax = options && options.yMax ? options.yMax : Math.max.apply(null, points.map(function (p) { return p.y; }));
     yMax = yMax <= 0 ? 1 : yMax;
 
+    // These scales map logical chart coordinates into the fixed SVG viewBox.
+    // Keeping chart dimensions fixed makes the layout stable across resizes.
     function xScale(x) {
       if (xMax === xMin) return padL;
       return padL + (x - xMin) / (xMax - xMin) * (width - padL - padR);
@@ -417,6 +467,8 @@
     }
 
     for (var gy = 0; gy <= 4; gy += 1) {
+      // Five horizontal grid lines: 0%, 25%, 50%, 75%, 100% for probability
+      // charts, or comparable spacing if a future chart uses another range.
       var yValue = yMax * gy / 4;
       var y = yScale(yValue);
       svg.appendChild(svgEl("line", {
@@ -468,6 +520,8 @@
     }));
 
     points.forEach(function (point, index) {
+      // Mark a small subset of points to give the line texture without making
+      // dense sweeps look noisy.
       if (index % Math.max(1, Math.ceil(points.length / 12)) !== 0 && index !== points.length - 1) return;
       svg.appendChild(svgEl("circle", {
         cx: xScale(point.x),
@@ -502,6 +556,9 @@
 
   function readTargetRows() {
     return Array.from($("targetRows").querySelectorAll("tr")).map(function (row) {
+      // A target row is a single requirement. Example:
+      // line=1, min=2, roles=["A","B"] means "line 1 needs at least two cards
+      // that have role A or role B."
       return {
         line: Math.max(1, Math.floor(Number(row.querySelector(".line-input").value) || 1)),
         min: Math.max(1, Math.floor(Number(row.querySelector(".need-input").value) || 1)),
@@ -519,6 +576,9 @@
     var byLine = new Map();
     readTargetRows().forEach(function (row) {
       if (!byLine.has(row.line)) byLine.set(row.line, []);
+      // Single-role rows can use the simpler A>=1 syntax. Multi-role rows use
+      // any(A,B)>=N to mean cards from any listed role count toward the same
+      // requirement.
       var segment = row.roles.length === 1
         ? row.roles[0] + ">=" + row.min
         : "any(" + row.roles.join(",") + ")>=" + row.min;
@@ -554,7 +614,7 @@
   /*
    * Internal combo expression syntax:
    *   A>=1 + B>=1          means A and B are both required.
-   *   any(A,B,C)>=2        means any two cards from that tag group are enough.
+   *   any(A,B,C)>=2        means any two cards from that role group are enough.
    *   A>=1 + B>=1 | C>=3   means either line can satisfy the combo.
    */
   function parseExpression(expression) {
@@ -562,6 +622,10 @@
     var relevantTags = new Set();
     var alternatives = splitTopLevel(String(expression || "").trim(), "|").map(function (line) {
       var requirements = splitTopLevel(line, "+").map(function (part) {
+        // Supported internal grammar:
+        //   any(A,B)>=2
+        //   A>=1
+        //   A       (shorthand for A>=1)
         var anyMatch = part.match(/^any\s*\(([^)]*)\)\s*>=\s*(\d+)$/i);
         var tagMatch = part.match(/^([A-Za-z0-9_-]+)\s*>=\s*(\d+)$/);
         var bareMatch = part.match(/^([A-Za-z0-9_-]+)$/);
@@ -585,6 +649,8 @@
           return null;
         }
         tags.forEach(function (tag) { relevantTags.add(tag); });
+        // A requirement stores the role names it can count and the minimum
+        // number of drawn cards needed for that requirement.
         return {
           raw: part,
           tags: tags,
@@ -606,6 +672,9 @@
 
   function readDeckRows() {
     return Array.from($("deckRows").querySelectorAll("tr")).map(function (row) {
+      // A physical deck row can have multiple roles. For example, a tutor could
+      // be tagged "wild" and a card that satisfies two combo pieces could be
+      // tagged "A B".
       return {
         qty: Math.max(0, Math.floor(Number(row.querySelector(".qty-input").value) || 0)),
         name: row.querySelector(".name-input").value.trim(),
@@ -616,7 +685,7 @@
     });
   }
 
-  // Collapse individual deck rows into "active tag groups". Exact enumeration
+  // Collapse individual deck rows into active role groups. Exact enumeration
   // only needs to distinguish roles mentioned by the expression and wildcard
   // tag; every other card can share a filler group.
   function buildCategories(rows, parsed, wildcardTag) {
@@ -624,11 +693,16 @@
     if (wildcardTag) relevant.add(wildcardTag);
     var byKey = new Map();
     rows.forEach(function (row) {
+      // Ignore roles that do not affect the current target. This turns the deck
+      // into the smallest exact state space needed for the calculation.
       var usefulTags = row.tags.filter(function (tag) {
         return relevant.has(tag);
       }).sort();
       var key = usefulTags.join(",");
       if (!byKey.has(key)) {
+        // Rows with the same relevant-role set are mathematically
+        // interchangeable. Example: two different A-only cards collapse into
+        // one category with a combined quantity.
         byKey.set(key, { key: key, qty: 0, tags: usefulTags });
       }
       byKey.get(key).qty += row.qty;
@@ -641,6 +715,9 @@
   }
 
   function vectorAdd(a, b) {
+    // Vector helpers operate category-by-category. If categories are
+    // [A-only, B-only, wild, filler], then [1,0,1,5] means one A-only card,
+    // zero B-only cards, one wildcard, and five filler cards.
     return a.map(function (value, index) { return value + b[index]; });
   }
 
@@ -656,7 +733,7 @@
     return values.reduce(function (total, value) { return total + value; }, 0);
   }
 
-  // Enumerate every possible draw vector across active tag groups. The callback
+  // Enumerate every possible draw vector across active role groups. The callback
   // receives both the vector and its exact multivariate-hypergeometric
   // probability.
   function enumerateDraws(counts, draw, callback) {
@@ -669,6 +746,8 @@
 
     var suffix = zeroVector(counts.length + 1);
     for (var s = counts.length - 1; s >= 0; s -= 1) {
+      // suffix[i] tells the recursion how many cards remain in categories i..end.
+      // That lets each branch skip impossible pick counts.
       suffix[s] = suffix[s + 1] + counts[s];
     }
 
@@ -679,11 +758,15 @@
       if (index === counts.length - 1) {
         if (remaining >= 0 && remaining <= counts[index]) {
           vector[index] = remaining;
+          // Multivariate hypergeometric:
+          // product(C(categorySize, pickedFromCategory)) / C(total, draw)
           callback(vector.slice(), Math.exp(logNumerator + logChoose(counts[index], remaining) - denom));
         }
         return;
       }
 
+      // Pick enough from this category to make the remaining categories capable
+      // of completing the draw, but never more than this category contains.
       var minPick = Math.max(0, remaining - suffix[index + 1]);
       var maxPick = Math.min(counts[index], remaining);
       for (var picked = minPick; picked <= maxPick; picked += 1) {
@@ -715,11 +798,16 @@
     }
 
     return parsed.alternatives.some(function (line) {
+      // For each alternative line, calculate how many requirement slots remain
+      // uncovered by drawn non-wildcard cards. Wildcards can cover the deficit.
       var deficit = 0;
       line.requirements.forEach(function (requirement) {
         var reqTags = new Set(requirement.tags);
         var actual = 0;
         categories.forEach(function (category, index) {
+          // Do not double-count wildcard cards as both normal role cards and
+          // wildcards unless the requirement explicitly asks for the wildcard
+          // role itself.
           var isWildcard = wildcardTag && category.tags.indexOf(wildcardTag) >= 0 && !reqTags.has(wildcardTag);
           if (!isWildcard && categoryHasAny(category, reqTags)) {
             actual += vector[index];
@@ -734,6 +822,8 @@
   function usefulCategory(category, parsed, wildcardTag) {
     var relevant = new Set(parsed.relevantTags);
     if (wildcardTag) relevant.add(wildcardTag);
+    // A category is useful if it has any role that can help satisfy the current
+    // target or serve as a wildcard.
     return categoryHasAny(category, relevant);
   }
 
@@ -755,6 +845,8 @@
     categories.forEach(function (category, index) {
       if (remaining <= 0) return;
       if (!usefulCategory(category, parsed, wildcardTag)) {
+        // Deterministically spend replacement slots on categories that cannot
+        // help the combo first.
         var picked = Math.min(initial[index], remaining);
         base[index] = picked;
         remaining -= picked;
@@ -764,6 +856,9 @@
     if (remaining <= 0) return [{ vector: base, probability: 1 }];
 
     var usefulCounts = initial.map(function (count, index) {
+      // If all non-useful cards were already replaced and the user is replacing
+      // more cards, the remaining replacement choices are random among useful
+      // cards still in hand.
       return usefulCategory(categories[index], parsed, wildcardTag) ? count - base[index] : 0;
     });
     var options = [];
@@ -777,6 +872,9 @@
   }
 
   function readComboInput() {
+    // The visible target table is the source of truth. The expression field is
+    // regenerated on every read and exists only so humans/AI can audit the
+    // internal target representation.
     var expression = buildExpressionFromTargetRows();
     $("comboExpression").value = expression;
     var wildcardTag = $("wildcardTag").value.trim();
@@ -808,13 +906,15 @@
       errors.push("Post-shuffle replacement needs enough cards left to draw replacements.");
     }
     if (input.categories.length > 9) {
-      errors.push("Exact combo mode is capped at 9 active tag groups.");
+      // Exact enumeration grows quickly with each distinct role group. This cap
+      // keeps the page responsive for normal browser use.
+      errors.push("Exact combo mode is capped at 9 active role groups.");
     }
     return errors;
   }
 
   // Exact combo-mode calculation mirrors basic mode, but each state is a vector
-  // of active tag groups instead of a single success count.
+  // of active role groups instead of a single success count.
   function calculateComboProbability(input) {
     var errors = validateCombo(input);
     if (errors.length) return { errors: errors, probability: NaN };
@@ -826,13 +926,18 @@
     var D = input.additionalDraws;
     var probability = 0;
 
+    // Stage 1: enumerate the opening hand as a vector over active categories.
     enumerateDraws(counts, H, function (initial, pInitial) {
       if (pInitial <= 0) return;
+      // Stage 2: enumerate which cards are replaced. Strategic replacement can
+      // be partly deterministic, while random replacement has multiple branches.
       var dropOptions = comboDropOptions(initial, input.categories, R, input.replacePolicy, input.parsed, input.wildcardTag);
       dropOptions.forEach(function (dropOption) {
         if (dropOption.probability <= 0) return;
         var kept = vectorSub(initial, dropOption.vector);
         var afterInitialDeck = vectorSub(counts, initial);
+        // Stage 3: build the replacement draw pool. Pre-shuffle adds dropped
+        // cards back immediately; post-shuffle does not.
         var repPool = input.shuffleTiming === "pre" ? vectorAdd(afterInitialDeck, dropOption.vector) : afterInitialDeck;
 
         enumerateDraws(repPool, R, function (replacement, pReplacement) {
@@ -844,6 +949,8 @@
             ? vectorSub(repPool, replacement)
             : vectorAdd(vectorSub(afterInitialDeck, replacement), dropOption.vector);
 
+          // Stage 4: enumerate additional draws, evaluate the final seen vector
+          // against the combo target, and accumulate successful probability mass.
           enumerateDraws(addPool, D, function (additional, pAdditional) {
             if (pAdditional <= 0) return;
             var finalSeen = vectorAdd(seenBeforeAdd, additional);
@@ -878,11 +985,16 @@
         }
       });
       points.push({ x: draw, y: cdf });
+      // Convert the CDF into a first-hit distribution. The increase from the
+      // previous CDF point is the probability that this exact draw count is the
+      // first time the combo appears.
       average += draw * Math.max(0, cdf - previous);
       previous = cdf;
     }
 
     if (points[points.length - 1].y < 0.999999) {
+      // If the combo is impossible even after the whole deck, "average draw hit"
+      // is undefined rather than a large misleading number.
       average = NaN;
     }
 
@@ -893,9 +1005,12 @@
   // debounced to keep typing in deck rows and expressions responsive.
   function renderCombo() {
     var comboVisible = $("comboPanel").classList.contains("active");
-    if (comboVisible) showStatus("Combo calculation running", false);
+    if (comboVisible) showStatus("", false);
     window.clearTimeout(comboTimer);
     comboTimer = window.setTimeout(function () {
+      // Since rendering is debounced, the user may switch tabs before this
+      // callback runs. `stillVisible` prevents hidden combo renders from
+      // overwriting the global status shown on the basic tab.
       var stillVisible = $("comboPanel").classList.contains("active");
       var input = readComboInput();
       var probabilityResult = calculateComboProbability(input);
@@ -919,7 +1034,7 @@
       $("comboProbability").textContent = formatPct(probabilityResult.probability);
       $("comboAverageDraw").textContent = Number.isFinite(cdfResult.average) ? formatNumber(cdfResult.average, 2) : "--";
       renderLineChart($("comboCdfChart"), downsamplePoints(cdfResult.points, 90), { yMax: 1, yFormat: formatPct });
-      if (stillVisible) showStatus("Combo calculation updated", false);
+      if (stillVisible) showStatus("", false);
     }, 60);
   }
 
@@ -933,6 +1048,8 @@
   }
 
   function refreshRoleOptions(rows, wildcardTag) {
+    // Datalist suggestions are convenience only; users can still type a new
+    // role that does not exist in the deck yet.
     var options = $("roleOptions");
     options.innerHTML = "";
     var roles = new Set();
@@ -985,6 +1102,8 @@
     var body = $("expressionTable");
     body.innerHTML = "";
     if (parsed.errors.length) {
+      // Parsing errors should be visible in the audit table because the
+      // generated expression is hidden behind a collapsed details element.
       var tr = document.createElement("tr");
       var td = document.createElement("td");
       td.colSpan = 2;
@@ -1008,6 +1127,8 @@
   }
 
   function maxTargetLine() {
+    // Used by "Add requirement" and "Add alternative" buttons to choose a
+    // sensible default line number for the next target row.
     return readTargetRows().reduce(function (max, row) {
       return Math.max(max, row.line);
     }, 1);
@@ -1016,6 +1137,8 @@
   function addTargetRow(line, min, roles) {
     var template = $("targetRowTemplate");
     var node = template.content.firstElementChild.cloneNode(true);
+    // Rows are created from a template so event listeners can be attached to
+    // each new input immediately.
     node.querySelector(".line-input").value = line == null ? maxTargetLine() : line;
     node.querySelector(".need-input").value = min == null ? 1 : min;
     node.querySelector(".roles-input").value = roles || "";
@@ -1032,6 +1155,8 @@
   function addDeckRow(qty, name, tags) {
     var template = $("deckRowTemplate");
     var node = template.content.firstElementChild.cloneNode(true);
+    // Deck rows are dynamic for the same reason target rows are: the app should
+    // work for generic shuffled-deck problems without a fixed card schema.
     node.querySelector(".qty-input").value = qty == null ? 4 : qty;
     node.querySelector(".name-input").value = name || "Card";
     node.querySelector(".tags-input").value = tags || "";
@@ -1046,6 +1171,8 @@
   }
 
   function loadComboExample() {
+    // A compact example deck: A piece, B piece, a wildcard/tutor, and filler.
+    // The target requires A and B, so drawing A+wild or B+wild also succeeds.
     $("deckRows").innerHTML = "";
     $("targetRows").innerHTML = "";
     addDeckRow(4, "Piece A", "A");
@@ -1066,11 +1193,11 @@
 
   function resetBasic() {
     $("deckSize").value = 60;
-    $("successes").value = 12;
+    $("successes").value = 4;
     $("initialHand").value = 7;
-    $("replacedCards").value = 2;
-    $("additionalDraws").value = 1;
-    $("targetSuccesses").value = 2;
+    $("replacedCards").value = 0;
+    $("additionalDraws").value = 0;
+    $("targetSuccesses").value = 1;
     $("replacePolicy").value = "misses";
     $("shuffleTiming").value = "pre";
     $("basicSweep").value = "additionalDraws";
@@ -1086,6 +1213,8 @@
     $("basicPanel").classList.toggle("active", basic);
     $("comboPanel").classList.toggle("active", !basic);
     if (updateHash) {
+      // Hashes make it possible to link directly to the combo builder with
+      // index.html#combo from documentation or a public site.
       window.location.hash = basic ? "basic" : "combo";
     }
     if (basic) renderBasic();
