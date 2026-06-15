@@ -99,8 +99,7 @@ a:hover {
   gap: 12px;
 }
 
-.site-link,
-.footer-cta {
+.site-link {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -118,8 +117,7 @@ a:hover {
   padding: 0 14px;
 }
 
-.site-link:hover,
-.footer-cta:hover {
+.site-link:hover {
   background: var(--accent);
   color: white;
 }
@@ -542,36 +540,6 @@ th {
   padding: 20px;
 }
 
-.marketing-footer {
-  /* Standalone-hosting CTA; intentionally secondary to the calculator itself. */
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin: 0 clamp(16px, 3vw, 36px) 36px;
-  padding: 22px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--surface-strong);
-  box-shadow: var(--shadow);
-}
-
-.marketing-footer h2 {
-  margin-top: 4px;
-  font-size: clamp(18px, 2vw, 24px);
-}
-
-.marketing-footer p {
-  max-width: 760px;
-  margin: 7px 0 0;
-  color: var(--muted);
-  line-height: 1.5;
-}
-
-.footer-cta {
-  padding: 0 18px;
-}
-
 @media (max-width: 1100px) {
   .workspace-grid,
   .combo-layout {
@@ -589,8 +557,7 @@ th {
     flex-direction: column;
   }
 
-  .topbar-actions,
-  .marketing-footer {
+  .topbar-actions {
     align-items: stretch;
     flex-direction: column;
   }

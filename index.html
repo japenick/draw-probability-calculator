@@ -47,7 +47,7 @@
                 <input id="initialHand" type="number" min="0" step="1" value="7">
               </label>
               <label>
-                <span>Cards replaced</span>
+                <span>Replacement count / limit</span>
                 <input id="replacedCards" type="number" min="0" step="1" value="0">
               </label>
               <label>
@@ -59,10 +59,10 @@
                 <input id="targetSuccesses" type="number" min="0" step="1" value="1">
               </label>
               <label>
-                <span>Cards chosen to replace</span>
+                <span>Replacement method</span>
                 <select id="replacePolicy">
-                  <option value="misses">Non-successes first</option>
-                  <option value="random">Random cards in hand</option>
+                  <option value="misses">Up to this many non-successes</option>
+                  <option value="random">Exactly this many random cards</option>
                 </select>
               </label>
               <label>
@@ -80,7 +80,7 @@
                 <select id="basicSweep">
                   <option value="additionalDraws">Additional draws</option>
                   <option value="initialHand">Initial hand</option>
-                  <option value="replacedCards">Cards replaced</option>
+                  <option value="replacedCards">Replacement count / limit</option>
                   <option value="successes">Copies in deck</option>
                 </select>
               </label>
@@ -196,7 +196,7 @@
                 <input id="comboInitialHand" type="number" min="0" step="1" value="7">
               </label>
               <label>
-                <span>Cards replaced</span>
+                <span>Replacement count / limit</span>
                 <input id="comboReplacedCards" type="number" min="0" step="1" value="2">
               </label>
               <label>
@@ -204,10 +204,10 @@
                 <input id="comboAdditionalDraws" type="number" min="0" step="1" value="1">
               </label>
               <label>
-                <span>Cards chosen to replace</span>
+                <span>Replacement method</span>
                 <select id="comboReplacePolicy">
-                  <option value="misses">Non-combo cards first</option>
-                  <option value="random">Random cards in hand</option>
+                  <option value="misses">Up to this many non-combo cards</option>
+                  <option value="random">Exactly this many random cards</option>
                 </select>
               </label>
               <label>
@@ -275,14 +275,6 @@
       </section>
     </main>
 
-    <!-- Lightweight marketing block so standalone deployments point back to the main site. -->
-    <footer class="marketing-footer">
-      <div>
-        <h2 id="marketingHeadline">More card math, strategy notes, and tools</h2>
-        <p id="marketingCopy">Find related tools, notes, projects, and resources at johnpenick.com.</p>
-      </div>
-      <a class="footer-cta" id="brandFooterCta" href="https://example.com">Visit main site</a>
-    </footer>
   </div>
 
   <!-- Template cloned by app.js whenever the user adds a combo deck row. -->

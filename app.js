@@ -30,10 +30,7 @@
   var MARKETING = {
     siteName: "John Penick",
     siteUrl: "https://www.johnpenick.com",
-    topLinkLabel: "johnpenick.com",
-    footerHeadline: "More tools, notes, and projects from John Penick",
-    footerCopy: "Find related tools, notes, projects, and resources at johnpenick.com.",
-    footerCtaLabel: "johnpenick.com"
+    topLinkLabel: "johnpenick.com"
   };
 
   var NS = "http://www.w3.org/2000/svg";
@@ -102,7 +99,7 @@
   }
 
   function applyMarketingConfig() {
-    var linkIds = ["brandTopLink", "brandFooterCta"];
+    var linkIds = ["brandTopLink"];
     linkIds.forEach(function (id) {
       var link = $(id);
       if (!link) return;
@@ -110,9 +107,6 @@
       link.rel = "noopener";
     });
     $("brandTopLink").textContent = MARKETING.topLinkLabel;
-    $("brandFooterCta").textContent = MARKETING.footerCtaLabel;
-    $("marketingHeadline").textContent = MARKETING.footerHeadline;
-    $("marketingCopy").textContent = MARKETING.footerCopy;
   }
 
   // Read and validate the basic calculator's form inputs. Overrides let sweep
@@ -145,7 +139,7 @@
     if (input.deckSize < 1) errors.push("Deck size must be at least 1.");
     if (input.successes < 0 || input.successes > input.deckSize) errors.push("Successes must be between 0 and deck size.");
     if (input.initialHand < 0 || input.initialHand > input.deckSize) errors.push("Initial hand must fit inside the deck.");
-    if (input.replacedCards < 0 || input.replacedCards > input.initialHand) errors.push("Cards replaced must be between 0 and initial hand.");
+    if (input.replacedCards < 0 || input.replacedCards > input.initialHand) errors.push("Replacement count/limit must be between 0 and initial hand.");
     if (input.additionalDraws < 0) errors.push("Additional draws cannot be negative.");
     if (input.targetSuccesses < 0) errors.push("Target successes cannot be negative.");
     if (input.additionalDraws > input.deckSize - input.initialHand) errors.push("Additional draws exceed the deck remaining after the initial hand.");
@@ -155,11 +149,12 @@
     return errors;
   }
 
-  // In basic mode, replacement can either protect successes by replacing
-  // non-successes first, or choose a random subset of the opening hand. This
-  // returns all possible successful-card drop counts and their probabilities.
+  // In basic mode, replacement can either protect successes by replacing up to
+  // N non-successes, or choose an exact random subset of the opening hand. This
+  // returns all possible successful-card drop counts, actual replacement counts,
+  // and their probabilities.
   function basicDropOptions(initialSuccesses, handSize, replaced, policy) {
-    if (replaced === 0) return [{ dropSuccesses: 0, probability: 1 }];
+    if (replaced === 0) return [{ dropSuccesses: 0, replacedCards: 0, probability: 1 }];
     if (policy === "random") {
       var options = [];
       // If the hand contains too few non-successes to fill the replacement
@@ -170,15 +165,19 @@
       for (var drop = minDrop; drop <= maxDrop; drop += 1) {
         options.push({
           dropSuccesses: drop,
+          replacedCards: replaced,
           probability: hypergeom(handSize, initialSuccesses, replaced, drop)
         });
       }
       return options;
     }
     return [{
-      // "Non-successes first" is deterministic until the number of replaced
-      // cards exceeds the number of non-successes in hand.
-      dropSuccesses: Math.max(0, replaced - (handSize - initialSuccesses)),
+      // "Up to this many non-successes" treats the input as a maximum number of
+      // misses to replace. Successes are never replaced in this mode; if the
+      // hand has fewer non-successes than the requested count, fewer cards are
+      // replaced.
+      dropSuccesses: 0,
+      replacedCards: Math.min(replaced, handSize - initialSuccesses),
       probability: 1
     }];
   }
@@ -216,25 +215,27 @@
       dropOptions.forEach(function (dropOption) {
         if (dropOption.probability <= 0) return;
         var dropSucc = dropOption.dropSuccesses;
+        var actualReplaced = dropOption.replacedCards;
         var keptSucc = initialHits - dropSucc;
 
         // Pre-shuffle replacement puts replaced cards back before replacement
         // cards are drawn. Post-shuffle replacement waits until after that draw.
-        var repTotal = input.shuffleTiming === "pre" ? N - H + R : N - H;
+        var repTotal = input.shuffleTiming === "pre" ? N - H + actualReplaced : N - H;
         var repSuccesses = input.shuffleTiming === "pre" ? K - initialHits + dropSucc : K - initialHits;
-        // Replacement draw bounds: draw exactly R replacement cards from the
-        // current replacement pool and enumerate how many of those are successes.
-        var minRep = Math.max(0, R - (repTotal - repSuccesses));
-        var maxRep = Math.min(repSuccesses, R);
+        // Replacement draw bounds: draw exactly the actual number of replaced
+        // cards from the current replacement pool and enumerate how many of
+        // those are successes.
+        var minRep = Math.max(0, actualReplaced - (repTotal - repSuccesses));
+        var maxRep = Math.min(repSuccesses, actualReplaced);
 
         for (var repSucc = minRep; repSucc <= maxRep; repSucc += 1) {
-          var pRep = hypergeom(repTotal, repSuccesses, R, repSucc);
+          var pRep = hypergeom(repTotal, repSuccesses, actualReplaced, repSucc);
           if (pRep <= 0) continue;
 
           var addTotal;
           var addSuccesses;
           if (input.shuffleTiming === "pre") {
-            addTotal = repTotal - R;
+            addTotal = repTotal - actualReplaced;
             addSuccesses = repSuccesses - repSucc;
           } else {
             // In post-shuffle mode, replaced cards re-enter the deck before
@@ -827,8 +828,10 @@
     return categoryHasAny(category, relevant);
   }
 
-  // Strategic combo replacement discards non-combo cards first. If more cards
-  // must be replaced, the remaining combo-relevant cards are replaced at random.
+  // Strategic combo replacement treats the input as a maximum number of
+  // non-combo cards to replace. Combo-relevant cards are never replaced in this
+  // mode; if the hand has fewer non-combo cards than the requested limit, fewer
+  // cards are replaced.
   function comboDropOptions(initial, categories, replaced, policy, parsed, wildcardTag) {
     if (replaced === 0) return [{ vector: zeroVector(initial.length), probability: 1 }];
 
@@ -853,22 +856,7 @@
       }
     });
 
-    if (remaining <= 0) return [{ vector: base, probability: 1 }];
-
-    var usefulCounts = initial.map(function (count, index) {
-      // If all non-useful cards were already replaced and the user is replacing
-      // more cards, the remaining replacement choices are random among useful
-      // cards still in hand.
-      return usefulCategory(categories[index], parsed, wildcardTag) ? count - base[index] : 0;
-    });
-    var options = [];
-    enumerateDraws(usefulCounts, remaining, function (extra, probability) {
-      options.push({
-        vector: vectorAdd(base, extra),
-        probability: probability
-      });
-    });
-    return options;
+    return [{ vector: base, probability: 1 }];
   }
 
   function readComboInput() {
@@ -899,7 +887,7 @@
     var deckSize = input.rows.reduce(function (total, row) { return total + row.qty; }, 0);
     if (deckSize < 1) errors.push("Deck must contain at least one card.");
     if (input.initialHand < 0 || input.initialHand > deckSize) errors.push("Initial hand must fit inside the deck.");
-    if (input.replacedCards < 0 || input.replacedCards > input.initialHand) errors.push("Cards replaced must be between 0 and initial hand.");
+    if (input.replacedCards < 0 || input.replacedCards > input.initialHand) errors.push("Replacement count/limit must be between 0 and initial hand.");
     if (input.additionalDraws < 0) errors.push("Additional draws cannot be negative.");
     if (input.additionalDraws > deckSize - input.initialHand) errors.push("Additional draws exceed the deck remaining after the initial hand.");
     if (input.shuffleTiming === "post" && input.replacedCards > deckSize - input.initialHand) {
@@ -935,12 +923,13 @@
       dropOptions.forEach(function (dropOption) {
         if (dropOption.probability <= 0) return;
         var kept = vectorSub(initial, dropOption.vector);
+        var actualReplaced = sum(dropOption.vector);
         var afterInitialDeck = vectorSub(counts, initial);
         // Stage 3: build the replacement draw pool. Pre-shuffle adds dropped
         // cards back immediately; post-shuffle does not.
         var repPool = input.shuffleTiming === "pre" ? vectorAdd(afterInitialDeck, dropOption.vector) : afterInitialDeck;
 
-        enumerateDraws(repPool, R, function (replacement, pReplacement) {
+        enumerateDraws(repPool, actualReplaced, function (replacement, pReplacement) {
           if (pReplacement <= 0) return;
           var seenBeforeAdd = vectorAdd(kept, replacement);
           // In post-shuffle mode, dropped cards are unavailable for the
@@ -1184,8 +1173,8 @@
     $("comboExpression").value = buildExpressionFromTargetRows();
     $("wildcardTag").value = "wild";
     $("comboInitialHand").value = 7;
-    $("comboReplacedCards").value = 0;
-    $("comboAdditionalDraws").value = 0;
+    $("comboReplacedCards").value = 2;
+    $("comboAdditionalDraws").value = 1;
     $("comboReplacePolicy").value = "misses";
     $("comboShuffleTiming").value = "pre";
     renderCombo();

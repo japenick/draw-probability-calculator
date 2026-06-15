@@ -4,6 +4,10 @@ A dependency-free static prototype for exact draw probabilities from a shuffled 
 
 Open `index.html` in a browser.
 
+## Site link
+
+Edit the `MARKETING` object near the top of `app.js` to set the header site URL and link label.
+
 ## Basic mode
 
 Use this when all success cards are interchangeable.
@@ -13,13 +17,13 @@ Inputs:
 - `Deck size`
 - `Successes in deck`
 - `Initial hand`
-- `Cards replaced`
+- `Replacement count / limit`
 - `Additional draws`
 - `Target successes`
-- `Cards chosen to replace`
+- `Replacement method`
 - `Replaced cards shuffled in`
 
-`Non-successes first` keeps successes when possible and replaces failures first. `Random cards in hand` replaces a random subset of the initial hand.
+`Up to this many non-successes` replaces at most the entered number of non-success cards and never replaces successes. If the hand has fewer non-success cards than the limit, fewer cards are replaced. `Exactly this many random cards` replaces a random subset of the initial hand and can replace successes.
 
 `Before drawing replacements` shuffles replaced cards back before drawing replacement cards. `After drawing replacements` draws replacements from the remaining deck first, then shuffles replaced cards back before additional draws.
 
